@@ -4,11 +4,11 @@ import plotly.graph_objects as go
 from sqlalchemy import create_engine
 
 # ======================================
-# CONFIG
+# CONFIG PAGE
 # ======================================
 
 st.set_page_config(
-    page_title="Dashboard météo Netatmo",
+    page_title="Météo Cambrin",
     layout="wide"
 )
 
@@ -36,13 +36,14 @@ def load_data():
     df = pd.read_sql(query, engine)
 
     df["timestamp"] = pd.to_datetime(
-    df["timestamp"],
-    format="ISO8601"
-)
+        df["timestamp"],
+        format="ISO8601"
+    )
 
     return df
 
-df = load_data()
+with st.spinner("Chargement des données météo..."):
+    df = load_data()
 
 # ======================================
 # PRÉPARATION
@@ -68,9 +69,9 @@ if today_df.empty:
 # TITRE
 # ======================================
 
-st.title("🌤 Dashboard météo Netatmo")
+st.title("🌤 Météo Cambrin")
 
-st.caption("Station météo personnelle cloud")
+st.caption("Station météo personnelle")
 
 # ======================================
 # KPIs
@@ -176,7 +177,7 @@ else:
     filtered_df = df
 
 # ======================================
-# COURBES
+# GRAPHIQUE
 # ======================================
 
 fig = go.Figure()
@@ -192,7 +193,8 @@ if periode == "24 heures":
             line=dict(
                 color="orange",
                 shape="spline",
-                smoothing=1.2
+                smoothing=1.2,
+                width=3
             ),
             hovertemplate=
             "<b>%{x|%d/%m/%Y %H:%M}</b><br>" +
@@ -219,14 +221,14 @@ else:
 
     daily_df = daily_df.reset_index()
 
-    # MIN
+    # COURBE MIN
 
     fig.add_trace(
         go.Scatter(
             x=daily_df["timestamp"],
             y=daily_df["temp_min"],
             mode="lines",
-            name="Température min",
+            name="Min",
             line=dict(
                 color="royalblue",
                 shape="spline",
@@ -240,14 +242,14 @@ else:
         )
     )
 
-    # MAX
+    # COURBE MAX
 
     fig.add_trace(
         go.Scatter(
             x=daily_df["timestamp"],
             y=daily_df["temp_max"],
             mode="lines",
-            name="Température max",
+            name="Max",
             line=dict(
                 color="red",
                 shape="spline",
@@ -261,18 +263,47 @@ else:
         )
     )
 
+# ======================================
+# LAYOUT MOBILE
+# ======================================
+
 fig.update_layout(
+
     title="Évolution des températures",
-    xaxis_title="Date",
-    yaxis_title="Température (°C)",
-    legend_title="Mesures",
-    height=600,
-    hovermode="x unified"
+
+    xaxis_title="",
+    yaxis_title="°C",
+
+    hovermode="x unified",
+
+    dragmode="pan",
+
+    height=420,
+
+    margin=dict(
+        l=10,
+        r=10,
+        t=40,
+        b=10
+    ),
+
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="center",
+        x=0.5,
+        font=dict(size=11)
+    )
 )
 
 st.plotly_chart(
     fig,
-    use_container_width=True
+    use_container_width=True,
+    config={
+        "displayModeBar": False,
+        "scrollZoom": False
+    }
 )
 
 # ======================================
