@@ -1,23 +1,19 @@
+import os
 import requests
 import psycopg2
 from datetime import datetime
 
 # ======================================
-# NETATMO
+# VARIABLES ENVIRONNEMENT
 # ======================================
 
-CLIENT_ID = "6a1083ceb8160ecfb10279b8"
-CLIENT_SECRET = "p44ViX4EHXLUxu0HMIYoKvXioOlr7gxZAVt2Ak"
-REFRESH_TOKEN = "694c868be1aee6d1700a3655|99f3541b626d040fecb94a2239fb3893"
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+REFRESH_TOKEN = os.getenv("REFRESH_TOKEN")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # ======================================
-# SUPABASE
-# ======================================
-
-DATABASE_URL = "postgresql://postgres.dqzlpzlylcpinfldzjja:netatmo2026@aws-1-eu-central-1.pooler.supabase.com:6543/postgres"
-
-# ======================================
-# TOKEN
+# TOKEN NETATMO
 # ======================================
 
 token_url = "https://api.netatmo.com/oauth2/token"
@@ -62,7 +58,7 @@ print(f"Température : {temperature} °C")
 print(f"Humidité : {humidity} %")
 
 # ======================================
-# INSERT POSTGRESQL
+# INSERT SUPABASE
 # ======================================
 
 conn = psycopg2.connect(DATABASE_URL)
