@@ -3,30 +3,40 @@ import streamlit as st
 import plotly.graph_objects as go
 from sqlalchemy import create_engine
 
-# ======================================
-# CONFIG PAGE
-# ======================================
-
 st.set_page_config(
     page_title="Météo Cambrin",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
-# ======================================
-# SUPABASE
-# ======================================
+st.markdown("""
+<style>
+header {visibility: hidden;}
+footer {visibility: hidden;}
+.block-container {
+    padding-top: 0.4rem;
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+}
+h1 {
+    font-size: 1.6rem !important;
+    margin-bottom: 0rem !important;
+}
+h3 {
+    margin-top: 0.5rem !important;
+}
+[data-testid="stMetric"] {
+    padding: 0.2rem;
+}
+</style>
+""", unsafe_allow_html=True)
 
-DATABASE_URL = "postgresql://postgres.dqzlpzlylcpinfldzjja:netatmo2026@aws-1-eu-central-1.pooler.supabase.com:6543/postgres"
+DATABASE_URL = st.secrets["DATABASE_URL"]
 
 engine = create_engine(DATABASE_URL)
 
-# ======================================
-# CHARGEMENT DONNÉES
-# ======================================
-
 @st.cache_data(ttl=300)
 def load_data():
-
     query = """
     SELECT *
     FROM temperatures
@@ -45,248 +55,133 @@ def load_data():
 with st.spinner("Chargement des données météo..."):
     df = load_data()
 
-# ======================================
-# PRÉPARATION
-# ======================================
-
+df["date"] = df["timestamp"].dt.date
 df["year"] = df["timestamp"].dt.year
 
 last_row = df.iloc[-1]
 
 today = pd.Timestamp.now().date()
 
-today_df = df[
-    df["timestamp"].dt.date == today
-]
+today_df = df[df["timestamp"].dt.date == today]
 
 if today_df.empty:
-
-    today_df = df[
-        df["timestamp"].dt.date == df["timestamp"].max().date()
-    ]
-
-# ======================================
-# TITRE
-# ======================================
+    today_df = df[df["timestamp"].dt.date == df["timestamp"].max().date()]
 
 st.title("🌤 Météo Cambrin")
 
-st.caption("Station météo personnelle")
-
-# ======================================
-# KPIs
-# ======================================
-
-col1, col2, col3, col4 = st.columns(4)
+col1, col2 = st.columns(2)
 
 with col1:
     st.metric(
-        "🌡 Température actuelle",
+        "Température",
         f"{last_row['temperature']:.1f} °C"
     )
 
 with col2:
     st.metric(
-        "💧 Humidité actuelle",
+        "Humidité",
         f"{last_row['humidity']:.0f} %"
     )
 
+col3, col4 = st.columns(2)
+
 with col3:
     st.metric(
-        "🔵 Minimum du jour",
+        "Min du jour",
         f"{today_df['temperature'].min():.1f} °C"
     )
 
 with col4:
     st.metric(
-        "🔴 Maximum du jour",
+        "Max du jour",
         f"{today_df['temperature'].max():.1f} °C"
     )
 
-# ======================================
-# STATS JOUR
-# ======================================
-
-st.subheader("📊 Statistiques du jour")
-
-col5, col6 = st.columns(2)
-
-with col5:
-    st.metric(
-        "Moyenne du jour",
-        f"{today_df['temperature'].mean():.1f} °C"
-    )
-
-with col6:
-    st.metric(
-        "Amplitude thermique",
-        f"{today_df['temperature'].max() - today_df['temperature'].min():.1f} °C"
-    )
-
-# ======================================
-# FILTRE
-# ======================================
-
-st.subheader("📈 Évolution des températures")
-
-periode = st.selectbox(
-    "Période",
-    [
-        "24 heures",
-        "7 jours",
-        "30 jours",
-        "12 mois",
-        "Tout l'historique"
-    ]
+daily_df = (
+    df
+    .set_index("timestamp")
+    .resample("D")
+    .agg({
+        "temperature": ["min", "max"]
+    })
 )
 
-if periode == "24 heures":
+daily_df.columns = [
+    "temp_min",
+    "temp_max"
+]
 
-    filtered_df = df[
-        df["timestamp"] >= (
-            df["timestamp"].max() - pd.Timedelta(hours=24)
-        )
-    ]
-
-elif periode == "7 jours":
-
-    filtered_df = df[
-        df["timestamp"] >= (
-            df["timestamp"].max() - pd.Timedelta(days=7)
-        )
-    ]
-
-elif periode == "30 jours":
-
-    filtered_df = df[
-        df["timestamp"] >= (
-            df["timestamp"].max() - pd.Timedelta(days=30)
-        )
-    ]
-
-elif periode == "12 mois":
-
-    filtered_df = df[
-        df["timestamp"] >= (
-            df["timestamp"].max() - pd.Timedelta(days=365)
-        )
-    ]
-
-else:
-
-    filtered_df = df
-
-# ======================================
-# GRAPHIQUE
-# ======================================
+daily_df = daily_df.reset_index()
 
 fig = go.Figure()
 
-if periode == "24 heures":
-
-    fig.add_trace(
-        go.Scatter(
-            x=filtered_df["timestamp"],
-            y=filtered_df["temperature"],
-            mode="lines",
-            name="Température",
-            line=dict(
-                color="orange",
-                shape="spline",
-                smoothing=1.2,
-                width=3
-            ),
-            hovertemplate=
-            "<b>%{x|%d/%m/%Y %H:%M}</b><br>" +
-            "Température : %{y:.1f}°C" +
-            "<extra></extra>"
-        )
+fig.add_trace(
+    go.Scatter(
+        x=daily_df["timestamp"],
+        y=daily_df["temp_min"],
+        mode="lines+markers",
+        name="Min",
+        line=dict(
+            color="royalblue",
+            shape="spline",
+            smoothing=1.2,
+            width=3
+        ),
+        marker=dict(size=5),
+        hovertemplate=
+        "<b>%{x|%d/%m/%Y}</b><br>" +
+        "Min : %{y:.1f} °C" +
+        "<extra></extra>"
     )
+)
 
-else:
-
-    daily_df = (
-        filtered_df
-        .set_index("timestamp")
-        .resample("D")
-        .agg({
-            "temperature": ["min", "max"]
-        })
+fig.add_trace(
+    go.Scatter(
+        x=daily_df["timestamp"],
+        y=daily_df["temp_max"],
+        mode="lines+markers",
+        name="Max",
+        line=dict(
+            color="red",
+            shape="spline",
+            smoothing=1.2,
+            width=3
+        ),
+        marker=dict(size=5),
+        hovertemplate=
+        "<b>%{x|%d/%m/%Y}</b><br>" +
+        "Max : %{y:.1f} °C" +
+        "<extra></extra>"
     )
-
-    daily_df.columns = [
-        "temp_min",
-        "temp_max"
-    ]
-
-    daily_df = daily_df.reset_index()
-
-    # COURBE MIN
-
-    fig.add_trace(
-        go.Scatter(
-            x=daily_df["timestamp"],
-            y=daily_df["temp_min"],
-            mode="lines",
-            name="Min",
-            line=dict(
-                color="royalblue",
-                shape="spline",
-                smoothing=1.2,
-                width=3
-            ),
-            hovertemplate=
-            "<b>%{x|%d/%m/%Y}</b><br>" +
-            "Min : %{y:.1f}°C" +
-            "<extra></extra>"
-        )
-    )
-
-    # COURBE MAX
-
-    fig.add_trace(
-        go.Scatter(
-            x=daily_df["timestamp"],
-            y=daily_df["temp_max"],
-            mode="lines",
-            name="Max",
-            line=dict(
-                color="red",
-                shape="spline",
-                smoothing=1.2,
-                width=3
-            ),
-            hovertemplate=
-            "<b>%{x|%d/%m/%Y}</b><br>" +
-            "Max : %{y:.1f}°C" +
-            "<extra></extra>"
-        )
-    )
-
-# ======================================
-# LAYOUT MOBILE
-# ======================================
+)
 
 fig.update_layout(
-
     title="Évolution des températures",
-
-    xaxis_title="",
-    yaxis_title="°C",
-
-    hovermode="x unified",
-
-    dragmode="pan",
-
-    height=420,
-
+    height=330,
     margin=dict(
-        l=10,
-        r=10,
-        t=40,
-        b=10
+        l=8,
+        r=8,
+        t=35,
+        b=8
     ),
-
+    xaxis=dict(
+        title="",
+        tickformat="%d/%m",
+        rangeslider=dict(visible=True, thickness=0.08),
+        rangeselector=dict(
+            buttons=[
+                dict(count=7, label="7 j", step="day", stepmode="backward"),
+                dict(count=1, label="1 mois", step="month", stepmode="backward"),
+                dict(count=6, label="6 mois", step="month", stepmode="backward"),
+                dict(step="all", label="Tout")
+            ],
+            font=dict(size=10)
+        )
+    ),
+    yaxis=dict(
+        title="°C",
+        fixedrange=True
+    ),
     legend=dict(
         orientation="h",
         yanchor="bottom",
@@ -294,7 +189,9 @@ fig.update_layout(
         xanchor="center",
         x=0.5,
         font=dict(size=11)
-    )
+    ),
+    hovermode="x unified",
+    dragmode="pan"
 )
 
 st.plotly_chart(
@@ -302,15 +199,10 @@ st.plotly_chart(
     use_container_width=True,
     config={
         "displayModeBar": False,
-        "scrollZoom": False
+        "scrollZoom": False,
+        "locale": "fr"
     }
 )
-
-# ======================================
-# STATS ANNUELLES
-# ======================================
-
-st.subheader("📚 Statistiques annuelles")
 
 annual_stats = (
     df
@@ -325,14 +217,15 @@ annual_stats = (
 )
 
 annual_stats.columns = [
-    "Température min",
-    "Température max",
-    "Température moyenne"
+    "Min",
+    "Max",
+    "Moyenne"
 ]
 
 annual_stats = annual_stats.round(1)
 
-st.dataframe(
-    annual_stats,
-    use_container_width=True
-)
+with st.expander("Statistiques annuelles"):
+    st.dataframe(
+        annual_stats,
+        use_container_width=True
+    )
