@@ -47,6 +47,7 @@ data_response = requests.get(
 )
 
 data = data_response.json()
+print("REPONSE API :", data)
 
 device = data["body"]["devices"][0]
 module = device["modules"][0]
