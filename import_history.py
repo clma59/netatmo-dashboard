@@ -1,20 +1,24 @@
+import os
 import requests
-import sqlite3
+import psycopg2
 from datetime import datetime, timedelta
 
 # ======================================
-# IDENTIFIANTS
+# VARIABLES ENVIRONNEMENT
+# (lues depuis les secrets, comme collect.py — aucun identifiant en clair)
 # ======================================
 
-CLIENT_ID = "6a1083ceb8160ecfb10279b8"
-CLIENT_SECRET = "p44ViX4EHXLUxu0HMIYoKvXioOlr7gxZAVt2Ak"
-REFRESH_TOKEN = "694c868be1aee6d1700a3655|99f3541b626d040fecb94a2239fb3893"
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+REFRESH_TOKEN = os.getenv("REFRESH_TOKEN")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
+# Références matérielles de la station (non secrètes : inutilisables sans les clés)
 DEVICE_ID = "70:ee:50:c3:c8:2e"
 MODULE_ID = "02:00:00:c5:4d:92"
 
 # ======================================
-# NOUVEAU TOKEN
+# TOKEN NETATMO
 # ======================================
 
 token_url = "https://api.netatmo.com/oauth2/token"
@@ -35,18 +39,21 @@ access_token = token_data["access_token"]
 print("Token OK")
 
 # ======================================
-# SQLITE
+# CONNEXION SUPABASE
 # ======================================
 
-conn = sqlite3.connect("weather.db")
+conn = psycopg2.connect(DATABASE_URL)
 
 cursor = conn.cursor()
+
+print("Connexion Supabase OK")
 
 # ======================================
 # BOUCLE PAR PÉRIODE
 # ======================================
 
-start_date = datetime(2025, 12, 25)
+# Début = début du trou de données. Fin = maintenant.
+start_date = datetime(2025, 7, 22)
 end_date = datetime.now()
 
 current_start = start_date
@@ -86,37 +93,45 @@ while current_start < end_date:
     data = response.json()
 
     if "body" not in data or len(data["body"]) == 0:
-        print("Aucune donnée")
+        print("Aucune donnée sur cette période")
         current_start = current_end
         continue
 
-    body = data["body"][0]
-
-    timestamps = body["beg_time"]
-    step = body["step_time"]
-    values = body["value"]
-
     count = 0
 
-    for i, row in enumerate(values):
+    # getmeasure renvoie une liste de blocs, chacun avec beg_time, step_time, value
+    for body in data["body"]:
 
-        timestamp = timestamps + (i * step)
+        timestamps = body["beg_time"]
+        step = body.get("step_time", 3600)
+        values = body["value"]
 
-        dt = datetime.fromtimestamp(timestamp).isoformat()
+        for i, row in enumerate(values):
 
-        temperature = row[0]
-        humidity = row[1]
+            timestamp = timestamps + (i * step)
 
-        cursor.execute("""
-        INSERT INTO temperatures (timestamp, temperature, humidity)
-        VALUES (?, ?, ?)
-        """, (
-            dt,
-            temperature,
-            humidity
-        ))
+            dt = datetime.fromtimestamp(timestamp)
 
-        count += 1
+            temperature = row[0]
+            humidity = row[1]
+
+            # On ignore les mesures incomplètes éventuelles
+            if temperature is None or humidity is None:
+                continue
+
+            cursor.execute(
+                """
+                INSERT INTO temperatures (timestamp, temperature, humidity)
+                VALUES (%s, %s, %s)
+                """,
+                (
+                    dt,
+                    temperature,
+                    humidity
+                )
+            )
+
+            count += 1
 
     conn.commit()
 
@@ -126,6 +141,7 @@ while current_start < end_date:
 
     current_start = current_end
 
+cursor.close()
 conn.close()
 
 print(f"\nTOTAL : {total_count} mesures importées")
